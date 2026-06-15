@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EG4TETO Live Log</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: transparent;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #3a1010;
+    }
+
+    #livelog {
+      border: 1px solid #d08080;
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.55);
+    }
+
+    #header {
+      background: #c04040;
+      color: #fff;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.88em;
+    }
+
+    #header .title {
+      font-weight: bold;
+      font-size: 1em;
+      letter-spacing: 0.03em;
+    }
+
+    #stats {
+      display: flex;
+      gap: 14px;
+      font-size: 0.82em;
+      opacity: 0.92;
+    }
+
+    #stats span b {
+      font-weight: bold;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88em;
+    }
+
+    thead tr {
+      background: #8b1a1a;
+      color: #fff;
+    }
+
+    thead th {
+      padding: 7px 12px;
+      text-align: left;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      font-size: 0.85em;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(192,64,64,0.15);
+      transition: background 0.15s;
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(255,255,255,0.4);
+    }
+
+    tbody tr:nth-child(odd) {
+      background: rgba(255,220,220,0.25);
+    }
+
+    tbody tr.new-qso {
+      animation: flashrow 1.2s ease-out;
+    }
+
+    @keyframes flashrow {
+      0%   { background: rgba(192,64,64,0.35); }
+      100% { background: transparent; }
+    }
+
+    tbody td {
+      padding: 7px 12px;
+    }
+
+    .call {
+      font-weight: bold;
+      color: #8b1a1a;
+    }
+
+    .band {
+      display: inline-block;
+      background: #c04040;
+      color: #fff;
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+
+    .mode {
+      font-size: 0.85em;
+      color: #5a1010;
+    }
+
+    #footer {
+      padding: 6px 14px;
+      font-size: 0.78em;
+      color: #7a3030;
+      text-align: right;
+      border-top: 1px solid rgba(192,64,64,0.2);
+    }
+
+    #footer a {
+      color: #8b1a1a;
+      text-decoration: none;
+    }
+
+    #status {
+      padding: 18px;
+      text-align: center;
+      font-size: 0.9em;
+      color: #7a3030;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4caf50;
+      margin-right: 6px;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+  <div id="livelog">
+    <div id="header">
+      <div class="title"><span class="dot"></span>EG4TETO — Live Log</div>
+      <div id="stats">
+        <span>QSOs: <b id="qso-count">—</b></span>
+        <span>Last update: <b id="last-update">—</b></span>
+      </div>
+    </div>
+
+    <div id="status">Loading contacts...</div>
+
+    <table id="log-table" style="display:none">
+      <thead>
+        <tr>
+          <th>UTC</th>
+          <th>Callsign</th>
+          <th>Band</th>
+          <th>Mode</th>
+          <th>RST Sent</th>
+          <th>RST Rcvd</th>
+        </tr>
+      </thead>
+      <tbody id="log-body"></tbody>
+    </table>
+
+    <div id="footer">
+      Via <a href="https://clublog.org/livestream/EG4TETO" target="_blank">Club Log</a>
+      &middot; Refreshes every 60s
+    </div>
+  </div>
+
+  <script>
+    const CALL = 'EG4TETO';
+    const API  = `https://clublog.org/livestream_json.php?call=${CALL}`;
+    let knownQSOs = new Set();
+
+    function formatUTC(dateStr) {
+      // dateStr like "2026-06-15 14:30:00"
+      const d = new Date(dateStr.replace(' ', 'T') + 'Z');
+      if (isNaN(d)) return dateStr;
+      return d.toUTCString().slice(17, 22); // HH:MM
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr.replace(' ', 'T') + 'Z');
+      if (isNaN(d)) return '';
+      return d.toISOString().slice(0, 10);
+    }
+
+    async function fetchLog() {
+      try {
+        const res  = await fetch(API);
+        const data = await res.json();
+
+        const qsos = Array.isArray(data) ? data : (data.qsos || data.contacts || []);
+
+        if (!qsos.length) {
+          document.getElementById('status').textContent = 'No contacts logged yet. Check back during the event!';
+          return;
+        }
+
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('log-table').style.display = 'table';
+        document.getElementById('qso-count').textContent  = qsos.length;
+        document.getElementById('last-update').textContent =
+          new Date().toUTCString().slice(17, 22) + ' UTC';
+
+        const tbody = document.getElementById('log-body');
+        tbody.innerHTML = '';
+
+        // Show latest first
+        const sorted = [...qsos].reverse();
+
+        sorted.forEach(q => {
+          // Field names vary — try common ones
+          const call = q.CALL || q.call || q.callsign || '?';
+          const band = q.BAND || q.band || '?';
+          const mode = q.MODE || q.mode || '?';
+          const date = q.QSO_DATE || q.date || q.DATE || '';
+          const time = q.TIME_ON  || q.time || q.TIME || '';
+          const rst_s = q.RST_SENT || q.rst_sent || '—';
+          const rst_r = q.RST_RCVD || q.rst_rcvd || '—';
+
+          const utc  = time ? time.slice(0,2) + ':' + time.slice(2,4) : (date ? formatUTC(date + ' ' + time) : '—');
+          const key  = call + date + time;
+          const isNew = !knownQSOs.has(key);
+          knownQSOs.add(key);
+
+          const tr = document.createElement('tr');
+          if (isNew && knownQSOs.size > 1) tr.classList.add('new-qso');
+
+          tr.innerHTML = `
+            <td>${utc}</td>
+            <td class="call">${call}</td>
+            <td><span class="band">${band}</span></td>
+            <td class="mode">${mode}</td>
+            <td>${rst_s}</td>
+            <td>${rst_r}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } catch (err) {
+        document.getElementById('status').textContent =
+          'Could not load contacts. Please try again later.';
+        console.error(err);
+      }
+    }
+
+    fetchLog();
+    setInterval(fetchLog, 60000); // refresh every 60s
+  </script>
+</body>
+</html>
